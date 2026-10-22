@@ -11,7 +11,7 @@ const https = require('https');
 const { execFile, execSync, spawn } = require('child_process');
 
 // Self-update: the overlay checks GitHub for a newer version, downloads the files, restarts Discord.
-const VERSION = '1.0.0';
+const VERSION = '1.0.1';
 const UPDATE_RAW_BASE = 'https://raw.githubusercontent.com/papaipits/discordshare-vpn/main';
 const UPDATE_FILES = ['ds-hook-vpn.js', 'ds-preload-vpn.js', 'ds-vpn-panel.js'];
 

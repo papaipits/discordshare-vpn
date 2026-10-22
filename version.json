@@ -1,5 +1,5 @@
 {
-  "version": "1.0.0",
+  "version": "1.0.1",
   "files": ["ds-hook-vpn.js", "ds-preload-vpn.js", "ds-vpn-panel.js"],
-  "notes": ""
+  "notes": "teste de auto-update"
 }
