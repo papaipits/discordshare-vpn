@@ -1,0 +1,19 @@
+DiscordShare VPN - AVISO IMPORTANTE
+
+Esta ferramenta faz o video / camera / Go Live NATIVOS do Discord funcionarem em
+redes com bloqueio regional (ex.: Brasil), de graca. Ela roteia APENAS o Discord
+por um tunel WireGuard (via WireSock) para um servidor fora do pais. Sua internet
+geral NAO e afetada - so o Discord usa o tunel.
+
+Antes de continuar, entenda:
+
+ - Isto provavelmente FERE OS TERMOS DE SERVICO do Discord. Use por sua conta e risco.
+ - O instalador modifica arquivos do Discord (com backup automatico) e instala o
+   WireSock (motor do tunel). A desinstalacao reverte tudo.
+ - Na PRIMEIRA vez que voce clicar em "Conectar", o Windows vai pedir permissao de
+   administrador (para criar uma tarefa agendada). Depois disso, nunca mais pede.
+ - Voce precisa de um config WireGuard gratuito. Recomendado: Proton VPN Free
+   (servidores US/NL/JP, sem cartao). O painel dentro do Discord abre o login e
+   captura o arquivo automaticamente.
+
+Ao continuar, voce concorda em usar esta ferramenta por sua conta e risco.
