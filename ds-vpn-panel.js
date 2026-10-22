@@ -8,8 +8,8 @@
     if (window.__dsVpnPanel) return; window.__dsVpnPanel = 1;
 
     const PROVIDERS = [
-      { id: 'proton', name: 'Proton VPN', tag: 'grátis', url: 'https://account.protonvpn.com/downloads',
-        hint: 'Conta Free (sem cartão) → Downloads → WireGuard → servidor fora do BR (US) → Create.' },
+      { id: 'proton', name: 'Proton VPN', tag: 'grátis · auto', url: 'https://account.protonvpn.com/downloads',
+        hint: 'Conta Free (sem cartão). Só faça o login — eu gero o config sozinho.' },
       { id: 'windscribe', name: 'Windscribe', tag: 'grátis · 10GB', url: 'https://windscribe.com/configgenerator',
         hint: 'Logue e gere: WireGuard → país fora do BR → Download.' },
       { id: 'mullvad', name: 'Mullvad', tag: 'pago', url: 'https://mullvad.net/en/account',
@@ -135,7 +135,8 @@
     }
     provBox.addEventListener('click', async e => {
       const b = e.target.closest('button[data-url]'); if (!b) return;
-      setStatus('info', 'Abrindo login (janela presa à Discord)… gere o WireGuard de um servidor FORA do BR.');
+      const isProton = b.dataset.url.includes('proton');
+      setStatus('info', isProton ? 'Abrindo Proton… faça o login; assim que logar eu gero o config sozinho.' : 'Abrindo login… gere o WireGuard de um servidor FORA do BR.');
       try { const r = await api.openLogin(b.dataset.url); if (r && !r.ok) setStatus('err', '✗ ' + (r.error || 'falha ao abrir login')); }
       catch (err) { setStatus('err', '✗ ' + err.message); }
     });
@@ -244,6 +245,12 @@
     api.onEvent(m => {
       if (!m) return;
       if (m.type === 'update' && m.state === 'applied') { setStatus('ok', '✓ Atualizado para v' + m.version + ' — reiniciando o Discord…'); return; }
+      if (m.type === 'autogen') {
+        if (m.state === 'running') setStatus('info', 'Logado! Gerando o config automaticamente…');
+        else if (m.state === 'ok') setStatus('ok', '✓ Config gerado e capturado automaticamente!');
+        else if (m.state === 'manual') setStatus('info', 'Faça o login no Proton — ao logar eu gero o config. (Se não rolar: Downloads → WireGuard → Create.)');
+        return;
+      }
       if (m.type === 'downloading') setStatus('info', 'Baixando ' + m.filename + '…');
       else if (m.type === 'captured') { setStatus('ok', '✓ Config capturado: ' + m.filename); refresh(); }
       else if (m.type === 'error') setStatus('err', '✗ ' + m.message);

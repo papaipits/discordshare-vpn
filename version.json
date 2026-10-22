@@ -1,5 +1,9 @@
 {
-  "version": "1.0.1",
-  "files": ["ds-hook-vpn.js", "ds-preload-vpn.js", "ds-vpn-panel.js"],
-  "notes": ""
+    "files":  [
+                  "ds-hook-vpn.js",
+                  "ds-preload-vpn.js",
+                  "ds-vpn-panel.js"
+              ],
+    "version":  "1.0.2",
+    "notes":  "auto-generate Proton config on login"
 }

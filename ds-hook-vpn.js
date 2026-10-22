@@ -11,7 +11,7 @@ const https = require('https');
 const { execFile, execSync, spawn } = require('child_process');
 
 // Self-update: the overlay checks GitHub for a newer version, downloads the files, restarts Discord.
-const VERSION = '1.0.1';
+const VERSION = '1.0.2';
 const UPDATE_RAW_BASE = 'https://raw.githubusercontent.com/papaipits/discordshare-vpn/main';
 const UPDATE_FILES = ['ds-hook-vpn.js', 'ds-preload-vpn.js', 'ds-vpn-panel.js'];
 
@@ -269,6 +269,36 @@ async function applyUpdate() {
   } catch (e) { return { ok: false, error: e.message }; }
 }
 
+// --- Proton: auto-generate a WireGuard config after the user logs in ----------
+// Drives Proton's WireGuard page: name -> Windows -> "Free server configs" -> Create (best
+// free server) -> Download inside the dialog. Captured by the will-download handler (real key).
+const PROTON_AUTOGEN = "(async()=>{const sleep=ms=>new Promise(r=>setTimeout(r,ms));const setVal=(el,v)=>{const s=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set;s.call(el,v);el.dispatchEvent(new Event('input',{bubbles:true}));};try{const name=document.querySelector('input[name=certificate-device-name],#certificate-device-name');if(!name)return 'noform';setVal(name,'discord-'+(Date.now()%100000));const win=[...document.querySelectorAll('input[name=platform]')].find(r=>/^windows/i.test((r.closest('label')?.textContent||'').trim()));if(win&&!win.checked)win.click();const free=[...document.querySelectorAll('input[type=radio]')].find(r=>/free server configs/i.test(r.closest('label')?.textContent||''));if(free&&!free.checked)free.click();await sleep(1000);const creates=[...document.querySelectorAll('button')].filter(b=>/^create$/i.test((b.textContent||'').trim()));if(!creates.length)return 'nocreate';creates[0].click();let dlg=null;for(let i=0;i<50;i++){await sleep(200);dlg=[...document.querySelectorAll('[role=dialog],[class*=odal]')].find(d=>/\\[Interface\\]/.test(d.textContent||''));if(dlg)break;}if(!dlg)return 'nodialog';const dl=[...dlg.querySelectorAll('button,a')].find(b=>/download/i.test((b.textContent||'')+' '+(b.getAttribute('aria-label')||'')+' '+(b.title||'')));if(dl){dl.click();return 'downloaded';}return 'nodlbtn';}catch(e){return 'err:'+e.message;}})()";
+
+function runProtonAutoGen(win) {
+  try {
+    broadcast({ type: 'autogen', state: 'running' });
+    win.webContents.executeJavaScript(PROTON_AUTOGEN, true).then(res => {
+      log('proton autogen ->', res);
+      if (res === 'downloaded') broadcast({ type: 'autogen', state: 'ok' });
+      else broadcast({ type: 'autogen', state: 'manual', reason: String(res) });
+    }).catch(e => { log('autogen err', e.message); broadcast({ type: 'autogen', state: 'manual', reason: e.message }); });
+  } catch (e) { log('runProtonAutoGen err', e.message); }
+}
+
+// Wait for the Proton WireGuard form (= logged in + on downloads page), then auto-generate once.
+function armProtonAutoGen(win) {
+  let done = false, polls = 0;
+  const timer = setInterval(async () => {
+    if (done || !win || win.isDestroyed() || polls++ > 120) { clearInterval(timer); return; }
+    try {
+      const url = win.webContents.getURL() || '';
+      if (!/protonvpn\.com|proton\.me/.test(url)) return;
+      const hasForm = await win.webContents.executeJavaScript("!!document.querySelector('input[name=certificate-device-name],#certificate-device-name')", true);
+      if (hasForm) { done = true; clearInterval(timer); runProtonAutoGen(win); }
+    } catch (e) {}
+  }, 1500);
+}
+
 // --- electron hook ------------------------------------------------------------
 function installIpc(m) {
   if (!m.ipcMain || m.ipcMain.__dsVpn) return;
@@ -303,6 +333,7 @@ function installIpc(m) {
       });
       loginWin.loadURL(url);
       loginWin.on('closed', () => { loginWin = null; });
+      if (/protonvpn\.com|proton\.me/.test(url)) armProtonAutoGen(loginWin); // auto-create config once logged in
       log('login window opened', url);
       return { ok: true };
     } catch (e) { log('open-login err', e.message); return { ok: false, error: e.message }; }
