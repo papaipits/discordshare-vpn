@@ -4,6 +4,6 @@
                   "ds-preload-vpn.js",
                   "ds-vpn-panel.js"
               ],
-    "version":  "1.0.2",
-    "notes":  "auto-generate Proton config on login"
+    "version":  "1.0.3",
+    "notes":  "Integrado nas Configuracoes do Discord (aba DiscordVPN), dropdown nativo, botao Instalar WireSock, fix sub-itens"
 }

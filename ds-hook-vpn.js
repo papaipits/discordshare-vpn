@@ -11,7 +11,7 @@ const https = require('https');
 const { execFile, execSync, spawn } = require('child_process');
 
 // Self-update: the overlay checks GitHub for a newer version, downloads the files, restarts Discord.
-const VERSION = '1.0.2';
+const VERSION = '1.0.3';
 const UPDATE_RAW_BASE = 'https://raw.githubusercontent.com/papaipits/discordshare-vpn/main';
 const UPDATE_FILES = ['ds-hook-vpn.js', 'ds-preload-vpn.js', 'ds-vpn-panel.js'];
 
@@ -161,10 +161,15 @@ function startTunnel(confName) {
     broadcast({ type: 'tunnel', state: 'connecting' });
     ensureTask((ok) => {
       if (!ok) { broadcast({ type: 'tunnel', state: 'error', message: 'não consegui criar a tarefa elevada (admin negado?)' }); return; }
-      execFile('schtasks', ['/run', '/tn', TASK_NAME], { windowsHide: true }, (err) => {
+      const run = () => execFile('schtasks', ['/run', '/tn', TASK_NAME], { windowsHide: true }, (err) => {
         if (err) { log('task run err', err.message); broadcast({ type: 'tunnel', state: 'error', message: err.message }); }
         else { activeTunnel = confName; log('tunnel started', confName); setTimeout(() => { broadcast({ type: 'tunnel', state: 'up', name: confName }); reloadDiscord(); }, 2800); }
       });
+      if (isWireSockRunning()) { // switching config while connected: stop the current instance first
+        try { execFile('schtasks', ['/end', '/tn', TASK_NAME], { windowsHide: true }, () => {}); } catch (e) {}
+        try { execFile('taskkill', ['/f', '/im', 'wiresock-client.exe'], { windowsHide: true }, () => {}); } catch (e) {}
+        setTimeout(run, 1600);
+      } else run();
     });
     return { ok: true, pending: true };
   } catch (e) { return { ok: false, error: e.message }; }
@@ -309,6 +314,26 @@ function installIpc(m) {
   m.ipcMain.handle('ds-vpn-version', () => VERSION);
   m.ipcMain.handle('ds-vpn-check-update', () => checkUpdate());
   m.ipcMain.handle('ds-vpn-apply-update', () => applyUpdate());
+  m.ipcMain.handle('ds-vpn-install-wiresock', () => {
+    try {
+      if (findWireSock()) return { ok: true, already: true };
+      broadcast({ type: 'wiresock', state: 'installing' });
+      const p = spawn('powershell', ['-NoProfile', '-Command', 'winget install -e --id NTKERNEL.WireSockVPNClientCLI --accept-source-agreements --accept-package-agreements'], { windowsHide: true });
+      p.on('exit', () => { broadcast({ type: 'wiresock', state: findWireSock() ? 'ok' : 'fail' }); });
+      p.on('error', (e) => { log('wiresock install err', e.message); broadcast({ type: 'wiresock', state: 'fail', error: e.message }); });
+      return { ok: true, pending: true };
+    } catch (e) { return { ok: false, error: e.message }; }
+  });
+  m.ipcMain.handle('ds-vpn-uninstall', () => {
+    try {
+      stopTunnel();
+      const unins = path.join(BASE, 'unins000.exe');
+      if (fs.existsSync(unins)) { spawn(unins, [], { detached: true, stdio: 'ignore' }).unref(); return { ok: true }; }
+      const ps = path.join(BASE, 'uninstall.ps1');
+      if (fs.existsSync(ps)) { spawn('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ps], { detached: true, stdio: 'ignore', windowsHide: true }).unref(); return { ok: true }; }
+      return { ok: false, error: 'desinstalador não encontrado neste modo' };
+    } catch (e) { return { ok: false, error: e.message }; }
+  });
   m.ipcMain.handle('ds-vpn-save-custom', (ev, { name, content }) => {
     try {
       if (!content || !/\[Interface\]/i.test(content) || !/PrivateKey/i.test(content)) return { ok: false, error: 'Não parece um config WireGuard ([Interface]/PrivateKey ausentes).' };

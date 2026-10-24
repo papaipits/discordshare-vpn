@@ -21,6 +21,8 @@ try {
     version: () => ipcRenderer.invoke('ds-vpn-version'),
     checkUpdate: () => ipcRenderer.invoke('ds-vpn-check-update'),
     applyUpdate: () => ipcRenderer.invoke('ds-vpn-apply-update'),
+    uninstall: () => ipcRenderer.invoke('ds-vpn-uninstall'),
+    installWireSock: () => ipcRenderer.invoke('ds-vpn-install-wiresock'),
     onEvent: (cb) => ipcRenderer.on('ds-vpn-event', (e, m) => { try { cb(m); } catch (_) {} }),
   };
   try { contextBridge.exposeInMainWorld('__dsVPN', api); }
