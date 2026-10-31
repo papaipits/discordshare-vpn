@@ -12,6 +12,7 @@ try {
   const { contextBridge, ipcRenderer } = require('electron');
   const api = {
     listConfigs: () => ipcRenderer.invoke('ds-vpn-list'),
+    deleteConfig: (name) => ipcRenderer.invoke('ds-vpn-delete-config', { name }),
     partition: () => ipcRenderer.invoke('ds-vpn-partition'),
     status: () => ipcRenderer.invoke('ds-vpn-status'),
     saveCustom: (name, content) => ipcRenderer.invoke('ds-vpn-save-custom', { name, content }),

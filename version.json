@@ -4,6 +4,6 @@
                   "ds-preload-vpn.js",
                   "ds-vpn-panel.js"
               ],
-    "version":  "1.0.6",
-    "notes":  "Valida chave do config (rejeita mascarada), auto-gen tenta varios servidores ate achar chave real, e o painel mostra o erro real se o tunel nao subir"
+    "version":  "1.0.7",
+    "notes":  "Dropdown: da pra trocar de servidor (desligado), marca configs com chave invalida, defaulta pro valido, e botao de apagar config"
 }

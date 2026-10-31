@@ -11,7 +11,7 @@ const https = require('https');
 const { execFile, execSync, spawn } = require('child_process');
 
 // Self-update: the overlay checks GitHub for a newer version, downloads the files, restarts Discord.
-const VERSION = '1.0.6';
+const VERSION = '1.0.7';
 const UPDATE_RAW_BASE = 'https://raw.githubusercontent.com/papaipits/discordshare-vpn/main';
 const UPDATE_FILES = ['ds-hook-vpn.js', 'ds-preload-vpn.js', 'ds-vpn-panel.js'];
 
@@ -51,7 +51,7 @@ function listConfigs() {
     files = fs.readdirSync(CONFIG_DIR).filter(f => f.toLowerCase().endsWith('.conf')).map(f => {
       const p = path.join(CONFIG_DIR, f); let endpoint = '?';
       try { const t = fs.readFileSync(p, 'utf8'); const m = t.match(/Endpoint\s*=\s*([^\s]+)/i); if (m) endpoint = m[1]; } catch (e) {}
-      return { name: f, path: p, endpoint };
+      return { name: f, path: p, endpoint, valid: confKeyValid(p) };
     });
   } catch (e) {}
   return files;
@@ -382,6 +382,17 @@ function installIpc(m) {
   if (!m.ipcMain || m.ipcMain.__dsVpn) return;
   m.ipcMain.__dsVpn = true;
   m.ipcMain.handle('ds-vpn-list', () => listConfigs());
+  m.ipcMain.handle('ds-vpn-delete-config', (ev, { name }) => {
+    try {
+      if (activeTunnel === name && isWireSockRunning()) return { ok: false, error: 'desligue o túnel antes de apagar o config ativo' };
+      const p = path.join(CONFIG_DIR, name);
+      if (fs.existsSync(p)) fs.unlinkSync(p);
+      const wp = p.replace(/\.conf$/i, '.wsconf'); if (fs.existsSync(wp)) fs.unlinkSync(wp);
+      if (fs.existsSync(STATE_FILE) && (fs.readFileSync(STATE_FILE, 'utf8').trim() === name)) { try { fs.unlinkSync(STATE_FILE); } catch (e) {} }
+      broadcast({ type: 'configs', files: listConfigs() });
+      return { ok: true };
+    } catch (e) { return { ok: false, error: e.message }; }
+  });
   m.ipcMain.handle('ds-vpn-partition', () => VPN_PARTITION);
   m.ipcMain.handle('ds-vpn-status', () => tunnelStatus());
   m.ipcMain.handle('ds-vpn-version', () => VERSION);

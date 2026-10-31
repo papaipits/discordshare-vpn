@@ -48,7 +48,12 @@
     .dsvpn-dd.disabled{opacity:.5;pointer-events:none}
     .dsvpn-dd-menu{display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--background-floating,#111214);border:1px solid var(--border-subtle,rgba(0,0,0,.3));border-radius:8px;box-shadow:var(--elevation-high,0 8px 16px rgba(0,0,0,.24));padding:6px;z-index:1000;max-height:260px;overflow-y:auto}
     .dsvpn-dd-menu.open{display:block}
-    .dsvpn-dd-opt{padding:9px 10px;border-radius:4px;font-size:15px;color:var(--text-default,var(--text-normal));cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .dsvpn-dd-opt{display:flex;align-items:center;gap:8px;padding:9px 10px;border-radius:4px;font-size:15px;color:var(--text-default,var(--text-normal))}
+    .dsvpn-dd-opt .lbl{flex:1;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .dsvpn-dd-opt .del{flex:0 0 auto;color:var(--text-muted);cursor:pointer;font-size:13px;padding:0 4px;opacity:0;transition:opacity .1s}
+    .dsvpn-dd-opt:hover .del{opacity:.7}
+    .dsvpn-dd-opt .del:hover{color:var(--text-danger,#f23f43);opacity:1}
+    .dsvpn-dd-opt.bad .lbl{color:var(--text-danger,#f23f43)}
     .dsvpn-dd-opt:hover{background:var(--background-modifier-hover,rgba(128,128,128,.12))}
     .dsvpn-dd-opt.sel{background:var(--background-modifier-selected,rgba(128,128,128,.2));color:var(--header-primary)}
     .dsvpn-dd-menu::-webkit-scrollbar{width:8px}.dsvpn-dd-menu::-webkit-scrollbar-thumb{background:var(--scrollbar-thin-thumb,rgba(128,128,128,.35));border-radius:4px}
@@ -262,17 +267,22 @@
     }
     function renderDropdown() {
       const val = $('dsvpn-ddval'), menu = $('dsvpn-ddmenu'), dd = $('dsvpn-dd'); if (!val || !menu) return;
-      if (engine.active && configs.some(c => c.name === engine.active)) selectedConfig = engine.active;
-      else if (!selectedConfig || !configs.some(c => c.name === selectedConfig)) selectedConfig = configs[0] ? configs[0].name : null;
+      // reflect the RUNNING config; otherwise respect the user's choice, defaulting to a valid one
+      if (engine.running && engine.active && configs.some(c => c.name === engine.active)) selectedConfig = engine.active;
+      else if (!selectedConfig || !configs.some(c => c.name === selectedConfig)) selectedConfig = ((configs.find(c => c.valid) || configs[0] || {}).name) || null;
       const cur = configs.find(c => c.name === selectedConfig);
       val.textContent = cur ? (cur.name + (cur.endpoint ? '  ·  ' + cur.endpoint : '')) : 'Nenhum config — pegue um abaixo';
       if (dd) dd.classList.toggle('disabled', !configs.length);
       menu.innerHTML = '';
       for (const c of configs) {
         const o = document.createElement('div');
-        o.className = 'dsvpn-dd-opt' + (c.name === selectedConfig ? ' sel' : '');
-        o.textContent = c.name + (c.endpoint ? '  ·  ' + c.endpoint : '');
-        o.onclick = () => pickConfig(c.name);
+        o.className = 'dsvpn-dd-opt' + (c.name === selectedConfig ? ' sel' : '') + (c.valid === false ? ' bad' : '');
+        const label = document.createElement('span'); label.className = 'lbl';
+        label.textContent = c.name + (c.endpoint ? '  ·  ' + c.endpoint : '') + (c.valid === false ? '   ⚠ chave inválida' : '');
+        label.onclick = () => pickConfig(c.name);
+        const del = document.createElement('span'); del.className = 'del'; del.textContent = '✕'; del.title = 'Apagar config';
+        del.onclick = async (e) => { e.stopPropagation(); if (selectedConfig === c.name) selectedConfig = null; await api.deleteConfig(c.name); refresh(); };
+        o.appendChild(label); o.appendChild(del);
         menu.appendChild(o);
       }
     }
