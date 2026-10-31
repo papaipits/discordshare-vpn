@@ -11,7 +11,7 @@ const https = require('https');
 const { execFile, execSync, spawn } = require('child_process');
 
 // Self-update: the overlay checks GitHub for a newer version, downloads the files, restarts Discord.
-const VERSION = '1.0.3';
+const VERSION = '1.0.4';
 const UPDATE_RAW_BASE = 'https://raw.githubusercontent.com/papaipits/discordshare-vpn/main';
 const UPDATE_FILES = ['ds-hook-vpn.js', 'ds-preload-vpn.js', 'ds-vpn-panel.js'];
 
@@ -96,13 +96,36 @@ function wireCapture() {
 }
 
 // --- WireSock per-app tunnel control (safe: ONLY Discord routed; never system-wide) ---
+let wsPathCache = null;
+function findExeIn(dir, name, depth) {
+  if (depth < 0) return null;
+  let entries;
+  try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (e) { return null; }
+  for (const e of entries) {
+    const full = path.join(dir, e.name);
+    if (e.isFile() && e.name.toLowerCase() === name) return full.replace(/\\/g, '/');
+  }
+  for (const e of entries) {
+    if (e.isDirectory()) { const f = findExeIn(path.join(dir, e.name), name, depth - 1); if (f) return f; }
+  }
+  return null;
+}
 function findWireSock() {
+  if (wsPathCache && fs.existsSync(wsPathCache)) return wsPathCache;
   const c = [
     'C:/Program Files/WireSock Secure Connect/sdk/wiresock-client.exe',
     'C:/Program Files/WireSock Secure Connect/wiresock-client.exe',
+    'C:/Program Files/WireSock Secure Connect/bin/wiresock-client.exe',
     'C:/Program Files/WireSock VPN Client/wiresock-client.exe',
+    'C:/Program Files (x86)/WireSock Secure Connect/sdk/wiresock-client.exe',
   ];
-  for (const p of c) if (fs.existsSync(p)) return p;
+  for (const p of c) if (fs.existsSync(p)) { wsPathCache = p; return p; }
+  // broad fallback: any WireSock* folder under Program Files (handles new layouts like 3.8.x)
+  for (const root of ['C:/Program Files', 'C:/Program Files (x86)']) {
+    let dirs = [];
+    try { dirs = fs.readdirSync(root).filter(d => /wiresock/i.test(d)); } catch (e) {}
+    for (const d of dirs) { const found = findExeIn(path.join(root, d), 'wiresock-client.exe', 3); if (found) { wsPathCache = found; return found; } }
+  }
   return null;
 }
 
@@ -318,7 +341,7 @@ function installIpc(m) {
     try {
       if (findWireSock()) return { ok: true, already: true };
       broadcast({ type: 'wiresock', state: 'installing' });
-      const p = spawn('powershell', ['-NoProfile', '-Command', 'winget install -e --id NTKERNEL.WireSockVPNClientCLI --accept-source-agreements --accept-package-agreements'], { windowsHide: true });
+      const p = spawn('powershell', ['-NoProfile', '-Command', 'winget install --version 3.6.1.1 --force -e --id NTKERNEL.WireSockVPNClientCLI --accept-source-agreements --accept-package-agreements'], { windowsHide: true });
       p.on('exit', () => { broadcast({ type: 'wiresock', state: findWireSock() ? 'ok' : 'fail' }); });
       p.on('error', (e) => { log('wiresock install err', e.message); broadcast({ type: 'wiresock', state: 'fail', error: e.message }); });
       return { ok: true, pending: true };

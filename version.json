@@ -4,6 +4,6 @@
                   "ds-preload-vpn.js",
                   "ds-vpn-panel.js"
               ],
-    "version":  "1.0.3",
-    "notes":  "Integrado nas Configuracoes do Discord (aba DiscordVPN), dropdown nativo, botao Instalar WireSock, fix sub-itens"
+    "version":  "1.0.4",
+    "notes":  "Deteccao robusta do WireSock (qualquer caminho/versao) + instalacao fixada na 3.6.1"
 }
