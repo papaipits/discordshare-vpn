@@ -23,13 +23,11 @@ $ws = @(
   'C:\Program Files\WireSock Secure Connect\wiresock-client.exe'
 ) | Where-Object { Test-Path $_ } | Select-Object -First 1
 if (-not $ws) {
-  Write-Host "Installing WireSock (winget - approve the admin prompt)..." -ForegroundColor Yellow
-  if (Get-Command winget -ErrorAction SilentlyContinue) {
-    winget install --version 3.6.1.1 -e --id NTKERNEL.WireSockVPNClientCLI --accept-source-agreements --accept-package-agreements
-  } else {
-    Write-Host "winget not found. Install WireSock Secure Connect CLI manually from https://wiresock.net then re-run." -ForegroundColor Red
-    exit 1
-  }
+  Write-Host "Installing WireSock (approve the admin prompt)..." -ForegroundColor Yellow
+  $url = 'https://wiresock.net/_api/download-release.php?product=wiresock-secure-connect-sdk&platform=x64&version=3.6.1.1&channel=winget'
+  $tmp = Join-Path $env:TEMP 'wiresock-sdk-3611.exe'
+  try { Invoke-WebRequest $url -OutFile $tmp -UseBasicParsing; Start-Process -FilePath $tmp -ArgumentList '/S','/NCRC' -Verb RunAs -Wait }
+  catch { Write-Host "Failed to install WireSock: $_  (install manually from wiresock.net)" -ForegroundColor Red }
 } else { Write-Host "WireSock already present: $ws" }
 
 # 3) Patch Discord cores (Stable + PTB) to load the hook

@@ -10,11 +10,10 @@ $ws = @(
   'C:\Program Files\WireSock Secure Connect\wiresock-client.exe'
 ) | Where-Object { Test-Path $_ } | Select-Object -First 1
 if (-not $ws) {
-  if (Get-Command winget -ErrorAction SilentlyContinue) {
-    winget install --version 3.6.1.1 -e --id NTKERNEL.WireSockVPNClientCLI --accept-source-agreements --accept-package-agreements
-  } else {
-    Write-Warning 'winget nao encontrado. Instale WireSock Secure Connect CLI de https://wiresock.net e rode de novo.'
-  }
+  $url = 'https://wiresock.net/_api/download-release.php?product=wiresock-secure-connect-sdk&platform=x64&version=3.6.1.1&channel=winget'
+  $tmp = Join-Path $env:TEMP 'wiresock-sdk-3611.exe'
+  try { Invoke-WebRequest $url -OutFile $tmp -UseBasicParsing; Start-Process -FilePath $tmp -ArgumentList '/S','/NCRC' -Verb RunAs -Wait }
+  catch { Write-Warning "Falha ao instalar WireSock: $_  (instale manual em wiresock.net)" }
 }
 
 # Patch Discord cores (Stable + PTB)
