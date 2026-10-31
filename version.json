@@ -4,6 +4,6 @@
                   "ds-preload-vpn.js",
                   "ds-vpn-panel.js"
               ],
-    "version":  "1.0.8",
-    "notes":  "Corrige vazamento de IPv6 que causava erro 2012 ao assistir; mostra a saida real do tunel (IPv4/IPv6)"
+    "version":  "1.0.9",
+    "notes":  "Clampa MTU para 1280 (CGNAT) para o video parar de travar ao assistir (erro 2012)"
 }

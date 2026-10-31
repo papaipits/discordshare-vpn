@@ -11,7 +11,7 @@ const https = require('https');
 const { execFile, execSync, spawn } = require('child_process');
 
 // Self-update: the overlay checks GitHub for a newer version, downloads the files, restarts Discord.
-const VERSION = '1.0.8';
+const VERSION = '1.0.9';
 const UPDATE_RAW_BASE = 'https://raw.githubusercontent.com/papaipits/discordshare-vpn/main';
 const UPDATE_FILES = ['ds-hook-vpn.js', 'ds-preload-vpn.js', 'ds-vpn-panel.js'];
 
@@ -178,7 +178,12 @@ function genWireSockConfig(confPath) {
   if (!/:/.test(addr)) addr += ', fd00:d15c:d15c::2/128';
   const dns = (g(/DNS\s*=\s*([^\r\n]+)/i) || '').trim();
   const out = confPath.replace(/\.conf$/i, '') + '.wsconf';
-  let cfg = `[Interface]\nPrivateKey = ${pk}\nAddress = ${addr}\n`;
+  // MTU clamp: on CGNAT paths (carrier double-encapsulation: DS-Lite/MAP) the usable MTU is
+  // already reduced, and WireGuard adds 60-80 bytes on top. Small packets (handshake, keepalives)
+  // get through but large video packets are silently dropped, so the stream never completes and
+  // the viewer times out (error 2012). 1280 is the IPv6 minimum MTU — deliverable on any path —
+  // so Discord sizes its media packets to fit the tunnel. Harmless on clean paths.
+  let cfg = `[Interface]\nPrivateKey = ${pk}\nAddress = ${addr}\nMTU = 1280\n`;
   if (dns) cfg += `DNS = ${dns}\n`;
   cfg += `\n[Peer]\nPublicKey = ${pub}\nEndpoint = ${ep}\nAllowedIPs = 0.0.0.0/0, ::/0\nAllowedApps = Discord\nPersistentKeepalive = 25\n`;
   fs.writeFileSync(out, cfg);
