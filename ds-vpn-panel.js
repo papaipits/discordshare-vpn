@@ -304,8 +304,23 @@
       if (wsi) { const missing = !engine.ready; wsi.style.display = missing ? '' : 'none'; sw.style.display = missing ? 'none' : ''; }
       if (on) {
         sw.classList.remove('disabled'); sub.textContent = 'Ligado — verificando saída…';
-        try { const j = await (await fetch('https://ipinfo.io/json')).json(); sub.textContent = 'Ligado · saída ' + (j.country || '?') + (j.city ? ' · ' + j.city : '') + ' — só o Discord.'; }
-        catch (e) { sub.textContent = 'Ligado — só o Discord sai pelo túnel.'; }
+        try {
+          // Real exit check from Discord's own process (goes through the tunnel). Forces v4 and v6
+          // separately so an IPv6 leak (v6 exiting BR) is caught, not hidden.
+          const r = api.egress ? await api.egress() : null;
+          const v4 = r && r.v4, v6 = r && r.v6;
+          const v4c = v4 && v4.ok ? v4.country : null;
+          if (v4c && v4c !== 'BR') {
+            if (r.leak) sub.textContent = '⚠ IPv4 ' + v4c + ' OK, mas o IPv6 está VAZANDO pro BR (' + (v6.ip || '') + '). Clique em Atualizar — a v1.0.8 corrige.';
+            else sub.textContent = 'Ligado · saída ' + v4c + (v4.city ? ' · ' + v4.city : '') + ' — só o Discord.';
+          } else if (v4c === 'BR') {
+            sub.textContent = '⚠ Saída ainda BR — o túnel não está capturando o Discord. Me avise.';
+          } else {
+            // egress unavailable (older hook / no network): fall back to a renderer probe
+            try { const j = await (await fetch('https://ipinfo.io/json')).json(); sub.textContent = 'Ligado · saída ' + (j.country || '?') + (j.city ? ' · ' + j.city : '') + ' — só o Discord.'; }
+            catch (e2) { sub.textContent = 'Ligado — só o Discord sai pelo túnel.'; }
+          }
+        } catch (e) { sub.textContent = 'Ligado — só o Discord sai pelo túnel.'; }
       } else if (!engine.ready) { sw.classList.add('disabled'); sub.textContent = 'WireSock não instalado — rode o instalador.'; }
       else if (!configs.length) { sw.classList.add('disabled'); sub.textContent = 'Pegue um config abaixo pra poder ligar.'; }
       else { sw.classList.remove('disabled'); sub.textContent = 'Desligado — Discord na sua região normal (BR).'; }

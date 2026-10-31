@@ -4,6 +4,6 @@
                   "ds-preload-vpn.js",
                   "ds-vpn-panel.js"
               ],
-    "version":  "1.0.7",
-    "notes":  "Dropdown: da pra trocar de servidor (desligado), marca configs com chave invalida, defaulta pro valido, e botao de apagar config"
+    "version":  "1.0.8",
+    "notes":  "Corrige vazamento de IPv6 que causava erro 2012 ao assistir; mostra a saida real do tunel (IPv4/IPv6)"
 }

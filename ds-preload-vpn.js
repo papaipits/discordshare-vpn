@@ -20,6 +20,7 @@ try {
     stopTunnel: () => ipcRenderer.invoke('ds-vpn-stop'),
     openLogin: (url) => ipcRenderer.invoke('ds-vpn-open-login', { url }),
     version: () => ipcRenderer.invoke('ds-vpn-version'),
+    egress: () => ipcRenderer.invoke('ds-vpn-egress'),
     checkUpdate: () => ipcRenderer.invoke('ds-vpn-check-update'),
     applyUpdate: () => ipcRenderer.invoke('ds-vpn-apply-update'),
     uninstall: () => ipcRenderer.invoke('ds-vpn-uninstall'),

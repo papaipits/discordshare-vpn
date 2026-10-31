@@ -11,7 +11,7 @@ const https = require('https');
 const { execFile, execSync, spawn } = require('child_process');
 
 // Self-update: the overlay checks GitHub for a newer version, downloads the files, restarts Discord.
-const VERSION = '1.0.7';
+const VERSION = '1.0.8';
 const UPDATE_RAW_BASE = 'https://raw.githubusercontent.com/papaipits/discordshare-vpn/main';
 const UPDATE_FILES = ['ds-hook-vpn.js', 'ds-preload-vpn.js', 'ds-vpn-panel.js'];
 
@@ -168,7 +168,14 @@ function genWireSockConfig(confPath) {
   const g = re => { const m = t.match(re); return m ? m[1].trim() : null; };
   const pk = g(/PrivateKey\s*=\s*(\S+)/i), pub = g(/PublicKey\s*=\s*(\S+)/i);
   const ep = g(/Endpoint\s*=\s*([^\s]+)/i);
-  const addr = (g(/Address\s*=\s*([^\r\n]+)/i) || '10.2.0.2/32').trim();
+  let addr = (g(/Address\s*=\s*([^\r\n]+)/i) || '10.2.0.2/32').trim();
+  // IPv6 leak guard: Proton free configs are IPv4-only. With AllowedIPs=::/0 but NO IPv6 address
+  // on the tunnel interface, WireSock routes IPv4 through the tunnel but lets the app's IPv6
+  // BYPASS it — so on a machine with native IPv6, Discord's media leaks straight out (e.g. Brazil)
+  // and the viewer times out (error 2012). Giving the interface a dummy ULA v6 makes WireSock
+  // capture Discord's IPv6 into the tunnel (discarded at the server) so it falls back to tunneled
+  // IPv4 instead of leaking. (If the config already carries a real v6 address, leave it.)
+  if (!/:/.test(addr)) addr += ', fd00:d15c:d15c::2/128';
   const dns = (g(/DNS\s*=\s*([^\r\n]+)/i) || '').trim();
   const out = confPath.replace(/\.conf$/i, '') + '.wsconf';
   let cfg = `[Interface]\nPrivateKey = ${pk}\nAddress = ${addr}\n`;
@@ -320,6 +327,30 @@ function httpsGet(url, redirects) {
     }).on('error', reject);
   });
 }
+// Real egress verification. Runs in the Discord main process (which WireSock matches by image
+// name), so a request here goes through the tunnel exactly like Discord's own traffic. We force
+// IPv4 and IPv6 separately (Node `family`) so we can SEE whether v6 is leaking past the tunnel.
+function ipCountry(family) {
+  return new Promise((resolve) => {
+    let done = false;
+    const fin = v => { if (!done) { done = true; resolve(v); } };
+    try {
+      const req = https.get('https://ipinfo.io/json', { family, timeout: 6000, headers: { 'User-Agent': 'DiscordShareVPN', 'Cache-Control': 'no-cache' } }, res => {
+        if (res.statusCode !== 200) { res.resume(); return fin({ ok: false, error: 'HTTP ' + res.statusCode }); }
+        let d = ''; res.setEncoding('utf8'); res.on('data', c => d += c);
+        res.on('end', () => { try { const j = JSON.parse(d); fin({ ok: true, ip: j.ip || '?', country: j.country || '?', city: j.city || '', org: j.org || '' }); } catch (e) { fin({ ok: false, error: 'parse' }); } });
+      });
+      req.on('error', e => fin({ ok: false, error: e.code || e.message }));
+      req.on('timeout', () => { try { req.destroy(); } catch (e) {} fin({ ok: false, error: 'timeout' }); });
+    } catch (e) { fin({ ok: false, error: e.message }); }
+  });
+}
+async function checkEgress() {
+  const [v4, v6] = await Promise.all([ipCountry(4), ipCountry(6)]);
+  const leak = !!(v6 && v6.ok && v6.country === 'BR'); // v6 reachable AND exiting Brazil = bypassing tunnel
+  log('egress v4=', v4, 'v6=', v6, 'leak=', leak);
+  return { v4, v6, leak };
+}
 function cmpSemver(a, b) {
   const pa = String(a).split('.').map(Number), pb = String(b).split('.').map(Number);
   for (let i = 0; i < 3; i++) { const d = (pa[i] || 0) - (pb[i] || 0); if (d) return d; }
@@ -396,6 +427,7 @@ function installIpc(m) {
   m.ipcMain.handle('ds-vpn-partition', () => VPN_PARTITION);
   m.ipcMain.handle('ds-vpn-status', () => tunnelStatus());
   m.ipcMain.handle('ds-vpn-version', () => VERSION);
+  m.ipcMain.handle('ds-vpn-egress', () => checkEgress());
   m.ipcMain.handle('ds-vpn-check-update', () => checkUpdate());
   m.ipcMain.handle('ds-vpn-apply-update', () => applyUpdate());
   m.ipcMain.handle('ds-vpn-install-wiresock', () => {
