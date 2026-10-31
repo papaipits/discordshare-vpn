@@ -11,7 +11,7 @@ const https = require('https');
 const { execFile, execSync, spawn } = require('child_process');
 
 // Self-update: the overlay checks GitHub for a newer version, downloads the files, restarts Discord.
-const VERSION = '1.0.4';
+const VERSION = '1.0.5';
 const UPDATE_RAW_BASE = 'https://raw.githubusercontent.com/papaipits/discordshare-vpn/main';
 const UPDATE_FILES = ['ds-hook-vpn.js', 'ds-preload-vpn.js', 'ds-vpn-panel.js'];
 
@@ -38,6 +38,8 @@ const WS_TASKINSTALL_BAT = BASE + '/ds-ws-taskinstall.bat';
 const WS_LOG = BASE + '/ds-ws.log';
 const STATE_FILE = BASE + '/ds-tunnel-active.txt';
 const TASK_USER = (process.env.USERDOMAIN || process.env.COMPUTERNAME || '.') + '\\' + (process.env.USERNAME || '');
+// WireSock SDK 3.6.1.1 installer (NSIS, silent: /S /NCRC). Direct download — no winget dependency.
+const WS_INSTALLER_URL = 'https://wiresock.net/_api/download-release.php?product=wiresock-secure-connect-sdk&platform=x64&version=3.6.1.1&channel=winget';
 let activeTunnel = null;
 const bksl = p => String(p).replace(/\//g, '\\');
 
@@ -127,6 +129,31 @@ function findWireSock() {
     for (const d of dirs) { const found = findExeIn(path.join(root, d), 'wiresock-client.exe', 3); if (found) { wsPathCache = found; return found; } }
   }
   return null;
+}
+
+function downloadFile(url, dest, cb, redirects) {
+  redirects = redirects || 0;
+  try {
+    const file = fs.createWriteStream(dest);
+    https.get(url, { headers: { 'User-Agent': 'DiscordShareVPN' } }, res => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location && redirects < 5) { file.close(); fs.unlink(dest, () => {}); return downloadFile(res.headers.location, dest, cb, redirects + 1); }
+      if (res.statusCode !== 200) { file.close(); fs.unlink(dest, () => {}); return cb(new Error('HTTP ' + res.statusCode)); }
+      res.pipe(file);
+      file.on('finish', () => file.close(() => cb(null)));
+    }).on('error', e => { try { file.close(); fs.unlinkSync(dest); } catch (_) {} cb(e); });
+  } catch (e) { cb(e); }
+}
+// Download the pinned WireSock SDK installer and run it silently (one UAC). No winget needed.
+function installWireSockNow() {
+  broadcast({ type: 'wiresock', state: 'installing' });
+  const dest = path.join(process.env.TEMP || process.env.TMP || 'C:/Windows/Temp', 'wiresock-sdk-3611.exe');
+  downloadFile(WS_INSTALLER_URL, dest, (err) => {
+    if (err) { log('ws dl err', err.message); broadcast({ type: 'wiresock', state: 'fail', error: 'download: ' + err.message }); return; }
+    const ps = "Start-Process -FilePath '" + bksl(dest) + "' -ArgumentList '/S','/NCRC' -Verb RunAs -Wait";
+    const p = spawn('powershell', ['-NoProfile', '-Command', ps], { windowsHide: true });
+    p.on('exit', () => { wsPathCache = null; const ok = !!findWireSock(); log('ws install done, found=' + ok); broadcast({ type: 'wiresock', state: ok ? 'ok' : 'fail' }); });
+    p.on('error', (e) => { log('ws install err', e.message); broadcast({ type: 'wiresock', state: 'fail', error: e.message }); });
+  });
 }
 
 // Convert a plain WireGuard .conf into a WireSock per-app config (AllowedApps=Discord).
@@ -340,10 +367,7 @@ function installIpc(m) {
   m.ipcMain.handle('ds-vpn-install-wiresock', () => {
     try {
       if (findWireSock()) return { ok: true, already: true };
-      broadcast({ type: 'wiresock', state: 'installing' });
-      const p = spawn('powershell', ['-NoProfile', '-Command', 'winget install --version 3.6.1.1 --force -e --id NTKERNEL.WireSockVPNClientCLI --accept-source-agreements --accept-package-agreements'], { windowsHide: true });
-      p.on('exit', () => { broadcast({ type: 'wiresock', state: findWireSock() ? 'ok' : 'fail' }); });
-      p.on('error', (e) => { log('wiresock install err', e.message); broadcast({ type: 'wiresock', state: 'fail', error: e.message }); });
+      installWireSockNow();
       return { ok: true, pending: true };
     } catch (e) { return { ok: false, error: e.message }; }
   });

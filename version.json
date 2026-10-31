@@ -4,6 +4,6 @@
                   "ds-preload-vpn.js",
                   "ds-vpn-panel.js"
               ],
-    "version":  "1.0.4",
-    "notes":  "Deteccao robusta do WireSock (qualquer caminho/versao) + instalacao fixada na 3.6.1"
+    "version":  "1.0.5",
+    "notes":  "Instala o WireSock baixando direto (sem winget) - resolve maquinas sem winget / versao removida"
 }
