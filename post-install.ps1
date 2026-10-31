@@ -11,7 +11,7 @@ $ws = @(
 ) | Where-Object { Test-Path $_ } | Select-Object -First 1
 if (-not $ws) {
   if (Get-Command winget -ErrorAction SilentlyContinue) {
-    winget install -e --id NTKERNEL.WireSockVPNClientCLI --accept-source-agreements --accept-package-agreements
+    winget install --version 3.6.1.1 -e --id NTKERNEL.WireSockVPNClientCLI --accept-source-agreements --accept-package-agreements
   } else {
     Write-Warning 'winget nao encontrado. Instale WireSock Secure Connect CLI de https://wiresock.net e rode de novo.'
   }

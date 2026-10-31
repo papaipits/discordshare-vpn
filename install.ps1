@@ -25,7 +25,7 @@ $ws = @(
 if (-not $ws) {
   Write-Host "Installing WireSock (winget - approve the admin prompt)..." -ForegroundColor Yellow
   if (Get-Command winget -ErrorAction SilentlyContinue) {
-    winget install -e --id NTKERNEL.WireSockVPNClientCLI --accept-source-agreements --accept-package-agreements
+    winget install --version 3.6.1.1 -e --id NTKERNEL.WireSockVPNClientCLI --accept-source-agreements --accept-package-agreements
   } else {
     Write-Host "winget not found. Install WireSock Secure Connect CLI manually from https://wiresock.net then re-run." -ForegroundColor Red
     exit 1
