@@ -325,6 +325,7 @@
       if (m.type === 'autogen') {
         if (m.state === 'running') setStatus('info', 'Logado! Gerando o config automaticamente…');
         else if (m.state === 'ok') setStatus('ok', 'Config gerado e capturado automaticamente.');
+        else if (m.state === 'masked') setStatus('err', 'O Proton só deu chaves mascaradas (limite de configs free?). Revogue configs antigos no Proton ou cole um .conf manual.');
         else if (m.state === 'manual') setStatus('info', 'Faça o login no Proton; ao logar eu gero o config.');
         return;
       }

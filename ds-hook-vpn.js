@@ -11,7 +11,7 @@ const https = require('https');
 const { execFile, execSync, spawn } = require('child_process');
 
 // Self-update: the overlay checks GitHub for a newer version, downloads the files, restarts Discord.
-const VERSION = '1.0.5';
+const VERSION = '1.0.6';
 const UPDATE_RAW_BASE = 'https://raw.githubusercontent.com/papaipits/discordshare-vpn/main';
 const UPDATE_FILES = ['ds-hook-vpn.js', 'ds-preload-vpn.js', 'ds-vpn-panel.js'];
 
@@ -85,7 +85,13 @@ function wireCapture() {
       broadcast({ type: 'downloading', filename: fn });
       item.once('done', (e, state) => {
         if (state === 'completed') {
-          log('captured', dest); broadcast({ type: 'captured', filename: path.basename(dest), path: dest });
+          if (!confKeyValid(dest)) {
+            try { fs.unlinkSync(dest); } catch (er) {}
+            log('captured config has invalid key', dest);
+            broadcast({ type: 'error', message: 'O config veio com chave inválida/mascarada. No Proton, clique Create num servidor (não "Download" de um já existente) e baixe na hora.' });
+          } else {
+            log('captured', dest); broadcast({ type: 'captured', filename: path.basename(dest), path: dest });
+          }
           try { if (loginWin && !loginWin.isDestroyed()) loginWin.close(); } catch (er) {}
         }
         else { log('download', state); broadcast({ type: 'error', message: 'download ' + state }); }
@@ -172,6 +178,12 @@ function genWireSockConfig(confPath) {
   return out;
 }
 
+// A valid WireGuard private key is 44-char base64 (ends with '='). Masked ('*****') / truncated = invalid.
+function confKeyValid(confPath) {
+  try { const t = fs.readFileSync(confPath, 'utf8'); const m = t.match(/PrivateKey\s*=\s*(\S+)/i); if (!m) return false; return /^[A-Za-z0-9+/]{43}=$/.test(m[1].trim()); }
+  catch (e) { return false; }
+}
+
 function taskExists() {
   try { execSync('schtasks /query /tn ' + TASK_NAME, { stdio: 'ignore', windowsHide: true }); return true; }
   catch (e) { return false; }
@@ -198,6 +210,7 @@ function ensureTask(cb) {
 function startTunnel(confName) {
   const conf = path.join(CONFIG_DIR, confName);
   if (!fs.existsSync(conf)) return { ok: false, error: 'config não encontrado: ' + confName };
+  if (!confKeyValid(conf)) { broadcast({ type: 'tunnel', state: 'error', message: 'Esse config tem chave inválida (mascarada). Gere um novo no Proton e tente de novo.' }); return { ok: false, error: 'chave inválida' }; }
   const ws = findWireSock();
   if (!ws) return { ok: false, error: 'WireSock não instalado (o instalador cuida disso).' };
   try {
@@ -212,8 +225,17 @@ function startTunnel(confName) {
     ensureTask((ok) => {
       if (!ok) { broadcast({ type: 'tunnel', state: 'error', message: 'não consegui criar a tarefa elevada (admin negado?)' }); return; }
       const run = () => execFile('schtasks', ['/run', '/tn', TASK_NAME], { windowsHide: true }, (err) => {
-        if (err) { log('task run err', err.message); broadcast({ type: 'tunnel', state: 'error', message: err.message }); }
-        else { activeTunnel = confName; log('tunnel started', confName); setTimeout(() => { broadcast({ type: 'tunnel', state: 'up', name: confName }); reloadDiscord(); }, 2800); }
+        if (err) { log('task run err', err.message); broadcast({ type: 'tunnel', state: 'error', message: err.message }); return; }
+        // verify WireSock actually came up (schtasks /run succeeding doesn't mean the tunnel connected)
+        setTimeout(() => {
+          if (isWireSockRunning()) { activeTunnel = confName; log('tunnel up', confName); broadcast({ type: 'tunnel', state: 'up', name: confName }); reloadDiscord(); }
+          else {
+            let hint = 'O WireSock não subiu.';
+            try { const lg = fs.readFileSync(WS_LOG, 'utf8'); if (/Invalid static private key|private key/i.test(lg)) hint = 'Config com chave inválida — gere um novo no Proton.'; else if (/handshake|Failed/i.test(lg)) hint = 'O WireSock falhou ao conectar (servidor fora do ar? veja ds-ws.log).'; } catch (e) {}
+            log('tunnel did not start:', hint);
+            broadcast({ type: 'tunnel', state: 'error', message: hint });
+          }
+        }, 4000);
       });
       if (isWireSockRunning()) { // switching config while connected: stop the current instance first
         try { execFile('schtasks', ['/end', '/tn', TASK_NAME], { windowsHide: true }, () => {}); } catch (e) {}
@@ -327,7 +349,7 @@ async function applyUpdate() {
 // --- Proton: auto-generate a WireGuard config after the user logs in ----------
 // Drives Proton's WireGuard page: name -> Windows -> "Free server configs" -> Create (best
 // free server) -> Download inside the dialog. Captured by the will-download handler (real key).
-const PROTON_AUTOGEN = "(async()=>{const sleep=ms=>new Promise(r=>setTimeout(r,ms));const setVal=(el,v)=>{const s=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set;s.call(el,v);el.dispatchEvent(new Event('input',{bubbles:true}));};try{const name=document.querySelector('input[name=certificate-device-name],#certificate-device-name');if(!name)return 'noform';setVal(name,'discord-'+(Date.now()%100000));const win=[...document.querySelectorAll('input[name=platform]')].find(r=>/^windows/i.test((r.closest('label')?.textContent||'').trim()));if(win&&!win.checked)win.click();const free=[...document.querySelectorAll('input[type=radio]')].find(r=>/free server configs/i.test(r.closest('label')?.textContent||''));if(free&&!free.checked)free.click();await sleep(1000);const creates=[...document.querySelectorAll('button')].filter(b=>/^create$/i.test((b.textContent||'').trim()));if(!creates.length)return 'nocreate';creates[0].click();let dlg=null;for(let i=0;i<50;i++){await sleep(200);dlg=[...document.querySelectorAll('[role=dialog],[class*=odal]')].find(d=>/\\[Interface\\]/.test(d.textContent||''));if(dlg)break;}if(!dlg)return 'nodialog';const dl=[...dlg.querySelectorAll('button,a')].find(b=>/download/i.test((b.textContent||'')+' '+(b.getAttribute('aria-label')||'')+' '+(b.title||'')));if(dl){dl.click();return 'downloaded';}return 'nodlbtn';}catch(e){return 'err:'+e.message;}})()";
+const PROTON_AUTOGEN = "(async()=>{const sleep=ms=>new Promise(r=>setTimeout(r,ms));const setVal=(el,v)=>{const s=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set;s.call(el,v);el.dispatchEvent(new Event('input',{bubbles:true}));};try{const name=document.querySelector('input[name=certificate-device-name],#certificate-device-name');if(!name)return 'noform';setVal(name,'discord-'+(Date.now()%100000));const win=[...document.querySelectorAll('input[name=platform]')].find(r=>/^windows/i.test((r.closest('label')?.textContent||'').trim()));if(win&&!win.checked)win.click();const free=[...document.querySelectorAll('input[type=radio]')].find(r=>/free server configs/i.test(r.closest('label')?.textContent||''));if(free&&!free.checked)free.click();await sleep(1000);const creates=[...document.querySelectorAll('button')].filter(b=>/^create$/i.test((b.textContent||'').trim()));if(!creates.length)return 'nocreate';const valid=k=>/^[A-Za-z0-9+/]{43}=$/.test(k||'');for(let a=0;a<Math.min(6,creates.length);a++){setVal(name,'discord-'+(Date.now()%100000));creates[a].click();let dlg=null;for(let i=0;i<50;i++){await sleep(200);dlg=[...document.querySelectorAll('[role=dialog],[class*=odal]')].find(d=>/\\[Interface\\]/.test(d.textContent||''));if(dlg)break;}if(!dlg)continue;const tt=[...dlg.querySelectorAll('button,[role=tab]')].find(b=>/^text$/i.test((b.textContent||'').trim()));if(tt){tt.click();await sleep(300);}const pk=((dlg.textContent||'').match(/PrivateKey\\s*=\\s*(\\S+)/)||[])[1];if(valid(pk)){const dl=[...dlg.querySelectorAll('button,a')].find(b=>/download/i.test((b.textContent||'')+' '+(b.getAttribute('aria-label')||'')+' '+(b.title||'')));if(dl){dl.click();return 'downloaded';}return 'nodlbtn';}const cl=[...dlg.querySelectorAll('button')].find(b=>/close|fechar/i.test((b.textContent||'')+' '+(b.getAttribute('aria-label')||'')));if(cl)cl.click();await sleep(400);}return 'maskedkey';}catch(e){return 'err:'+e.message;}})()";
 
 function runProtonAutoGen(win) {
   try {
@@ -335,6 +357,7 @@ function runProtonAutoGen(win) {
     win.webContents.executeJavaScript(PROTON_AUTOGEN, true).then(res => {
       log('proton autogen ->', res);
       if (res === 'downloaded') broadcast({ type: 'autogen', state: 'ok' });
+      else if (res === 'maskedkey') broadcast({ type: 'autogen', state: 'masked' });
       else broadcast({ type: 'autogen', state: 'manual', reason: String(res) });
     }).catch(e => { log('autogen err', e.message); broadcast({ type: 'autogen', state: 'manual', reason: e.message }); });
   } catch (e) { log('runProtonAutoGen err', e.message); }
